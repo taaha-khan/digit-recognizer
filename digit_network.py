@@ -1,151 +1,235 @@
-# Imports
-from digit_matrix import Matrix
-import math, random
+from digit_network import NeuralNetwork
+import random, time
+import turtle, csv
 
-# Activation Function
-def sigmoid(x):
-    if x < 0: return 1 - 1 / (1 + math.exp(x))
-    return 1 / (1 + math.exp(-x))
+wn = turtle.Screen()
+wn.setup(560, 560)
+wn.title('Digit Reconizer Interface')
+wn.tracer(0)
+wn.colormode(255)
 
-# Derivative of Sigmoided Value
-def dsigmoid(y):
-    # return sigmoid(x) * (1 - sigmoid(x))
-    return y * (1 - y)
+width = wn.window_width()
+height = wn.window_height()
 
-# Network
-class NeuralNetwork:
+xs = []
+ys = []
+for i in range(int(-width/2 - 1), int(height/2)):
+    if i % 10 == 0:
+        xs.append(i)
+        ys.append(i)
+pixelPositions = []
+xcount = 0
+ycount = 0
+for y in range(len(ys), 0, -1):
+    for x in range(len(xs)):
+        if xcount % 2 == 1 and ycount % 2 == 1:
+            pixelPositions.append((xs[x], ys[y]))
+        xcount += 1
+    ycount += 1
 
-    # Constructor
-    def __init__(self, a, b, c):
+pixels = []
+
+for i in range(len(pixelPositions)):
+    p = turtle.Turtle()
+    p.speed(0)
+    p.shape('square')
+    p.color('black', 'white')
+    p.pu()
+    p.goto(pixelPositions[i])
+    pixels.append(p)
+
+def show(colors, numPredicted):
+    for i in range(len(pixels)):
+        p = pixels[i]
+        c = int(255 - (colors[i] * 255))
+        p.color(c, c, c)
+    w.clear()
+    w.write('AI Prediction: ' + str(numPredicted), move=False, align="left", font=("Courier", 10, "bold"))
+    wn.update()
+
+mouse = turtle.Turtle()
+mouse.speed(0)
+mouse.pu()
+mouse.color('black', 'white')
+mouse.left(120)
+
+def draw(x, y):
+    mouse.goto(x, y)
+    for p in pixels:
+        if p.distance(mouse) < 20:
+            p.color('black')
+        elif p.distance(mouse) < 25 and p.pencolor() == 'black':
+            c = 255 - int(p.distance(mouse) * 10)
+            # print(c)
+            p.color(c, c, c)
+
+def clearAll():
+    for p in pixels:
+        p.color('black', 'white')
+
+wn.listen()
+
+
+while True:
+    mouse.ondrag(draw)
+    wn.onscreenclick(mouse.goto)
+    wn.onkey(clearAll, 'space')
+    wn.update()
+    break
+
+def greatestOf(list):
+    greatest = -1
+    for val in list:
+        if val > greatest:
+            greatest = val
+    # return greatest
+    return list.index(greatest)
+
+w = turtle.Turtle()
+w.speed(0)
+w.pu(); w.ht()
+w.goto(-width/2 + 10, -height/2 + 10)
+
+
+main = []
+nn = NeuralNetwork(784, 16, 10)
+
+correct = 0
+total = 0
+bestAccuracy = -1
+
+errors = {}
+done = []
+for i in range(10):
+    for j in range(10):
+        if i != j and f'{j} {i}' not in done:
+            errors[f'{i} {j}'] = 0
+            done.append(f'{i} {j}')
+
+def Error():
+    global errors
+    print(errors)
+
+
+wn.onkey(Error, 'space')
+wn.onclick(mouse.goto)
+
+input('Start Learning: \n')
+
+wn.bye()
+
+s = open('submission.csv', 'w+')
+s.write('ImageId,Label\n')
+s.close()
+
+start_time = time.time()
+
+# Reading Data File
+with open('train.csv') as file:
+
+    # Getting CSV file
+    reader = csv.DictReader(file)
+
+    # Reading CSV file
+    for row in reader:
+
+        # Initializing Row Array
+        main.append([])
+
+        # Extracting Data
+        last = main[len(main) - 1]
+        for i in range(784):
+            pixel = row['pixel' + str(i)]
+            # Normalizing Data -> [0 - 1]
+            last.append((float(pixel) / 255.0))
+
+        # Getting Answer
+        target = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        target[int(row['label'])] = 1
+
+        # Training Model
+        nn.train(last, target)
+
+        # Getting prediction
+        numPredicted = int(greatestOf(nn.predict(last)))
+        numAnswer = target.index(1)
+
+        # Showing AI Guess
+        # show(last, numPredicted)
+
+        # Recording Results
+        if numPredicted == numAnswer:
+            correct += 1
+        else:
+            # Recording Errors
+            string = f'{numPredicted} {numAnswer}'
+            if string in done:
+                errors[string] += 1
+            else: errors[f'{numAnswer} {numPredicted}'] += 1
+        # Calculating Accuracy
+        total += 1
+        accuracy = ((correct/total) * 100)
+        if int(accuracy) > int(bestAccuracy):
+            bestAccuracy = accuracy
+            # Printing Data
+            print(f"Accuracy: {int(accuracy)}%")
         
-        # Copy Same Neural Network
-        if isinstance(a, NeuralNetwork):
-            self.input_nodes = a.input_nodes
-            self.hidden_nodes = a.input_nodes
-            self.output_nodes = a.input_nodes
+        if total % 1000 == 0:
+            print(f'\n<<<<< {total} finished >>>>>\n')
 
-            self.weights_ih = a.weights_ih.copy()
-            self.weights_ho = a.weights_ho.copy()
+        # Ending Learning (Lag Reduction)
+        # if total > 2000: break
 
-            self.bias_h = a.bias_h.copy()
-            self.bias_o = a.bias_o.copy()
+# ==========================================================================
 
+end_time = time.time()
 
-        else:  # New Neural Network
-            # Network Node Amounts
-            self.input_nodes = a
-            self.hidden_nodes = b
-            self.output_nodes = c
+input(f'Learning Completed\nAccuracy: {(correct/total) * 100}%\nElapsed Time: {end_time - start_time} seconds\n\nProceed to final tests: ')
 
-            # Weight Matrices
-            self.weights_ih = Matrix(self.hidden_nodes, self.input_nodes)
-            self.weights_ho = Matrix(self.output_nodes, self.hidden_nodes)
-            self.weights_ih.randomize()
-            self.weights_ho.randomize()
+submit = open('submission.csv', 'w+')
+submit.write('ImageId, Label\n')
 
-            # Bias Matrices
-            self.bias_h = Matrix(self.hidden_nodes, 1)
-            self.bias_o = Matrix(self.output_nodes, 1)
-            self.bias_h.randomize()
-            self.bias_o.randomize()
-            self.learning_rate = 0.1
+with open('test.csv') as file:
 
+    reader = csv.DictReader(file)
+    index = 1
 
-    # Feedforward Algorithm
-    def predict(self, input_array):
+    for row in reader:
 
-        # Generating Hidden Outputs
-        inputs = Matrix.fromArray(Matrix, input_array)
-        hidden = Matrix.static_multiply(Matrix, self.weights_ih, inputs)
-        hidden.add(self.bias_h)
+        inputs = []
 
-        # Activation Function
-        hidden.map(sigmoid)
+        for i in range(784):
+            pixel = row['pixel' + str(i)]
+            inputs.append((float(pixel) / 255.0))
         
-        # Generating Output
-        output = Matrix.static_multiply(Matrix, self.weights_ho, hidden)
-        output.add(self.bias_o)
-        output.map(sigmoid)
+        guess = nn.predict(inputs)
+        predicted = greatestOf(guess)
 
-        return output.toArray()
+        submit.write(str(index) + ', ' + str(predicted) + '\n')
 
-    # Normalizing Outputs to 100%
-    def softmax(self, outputs, A):
-        outputs = outputs.exp(A)
-        return outputs / outputs.sum()
-    
-    # Backpropagation Training Algorithm
-    def train(self, input_array, target_array):
+        index += 1
 
-        # FEEDFORWARD ALGORITHM ---------
+        if index % 1000 == 0:
+            print('Index:', index)
 
-        # Generating Hidden Outputs
-        inputs = Matrix.fromArray(Matrix, input_array)
-        hidden = Matrix.static_multiply(Matrix, self.weights_ih, inputs)
-        hidden.add(self.bias_h)
-
-        # Activation Function
-        hidden.map(sigmoid)
-        
-        # Generating Output
-        outputs = Matrix.static_multiply(Matrix, self.weights_ho, hidden)
-        outputs.add(self.bias_o)
-        outputs.map(sigmoid)
-
-        # -------------------------------
-
-        # Converting Arrays to Matrix Objects
-        targets = Matrix.fromArray(Matrix, target_array)
-
-        # Calculating Errors
-        output_errors = Matrix.static_subtract(Matrix, targets, outputs)
-        
-        # Calculating Gradient
-        gradients = Matrix.static_map(Matrix, outputs, dsigmoid)
-        gradients.multiply(output_errors)
-        gradients.multiply(self.learning_rate)
-
-        # Calculate Deltas
-        hidden_T = Matrix.static_transpose(Matrix, hidden)
-        weigths_ho_deltas = Matrix.static_multiply(Matrix, gradients, hidden_T)
-
-        # Adjusting Weights & Bias (hidden -> output)
-        self.weights_ho.add(weigths_ho_deltas)
-        self.bias_o.add(gradients)
-
-        # Calculating Hidden Layer Errors
-        who_t = Matrix.static_transpose(Matrix, self.weights_ho)
-        hidden_errors = Matrix.static_multiply(Matrix, who_t, output_errors)
-        
-        # Calculate Hidden Gradient
-        hidden_gradient = Matrix.static_map(Matrix, hidden, dsigmoid)
-        hidden_gradient.multiply(hidden_errors)
-        hidden_gradient.multiply(self.learning_rate)
-
-        # Calculate (Input -> Hidden) Deltas
-        inputs_T = Matrix.static_transpose(Matrix, inputs)
-        weight_ih_deltas = Matrix.static_multiply(Matrix, hidden_gradient, inputs_T)
-
-        # Adjusting Weights (input -> hidden)
-        self.weights_ih.add(weight_ih_deltas)
-        self.bias_h.add(hidden_gradient)
+submit.close()
 
 
-    # Neuro-evolution Functions
 
-    # Copying same Neural Network
-    def copy(self):
-        return NeuralNetwork(self, None, None)
-    
-    # Mutating Child Neural Network Weights
-    def mutate(self, rate):
+print('\n\nDATA DUMP COMPLETE: \'submission.csv\' is ready for submit\n')
 
-        def change(self):
-            if random.random() < rate:
-                return (random.random() * 2) - 1
-            else: return self
 
-        self.weights_ih.map(change)
-        self.weights_ho.map(change)
-        self.bias_h.map(change)
-        self.bias_o.map(change)
+
+brain = open('brain.txt', 'w+')
+brain.write(f"{nn.weights_ih.data}\n{nn.weights_ho.data}\n{nn.bias_h.data}\n{nn.bias_o.data}")
+brain.close()
+
+print(
+    f"{nn.weights_ih.data}\n{nn.weights_ho.data}\n{nn.bias_h.data}\n{nn.bias_o.data}"
+)
+
+
+input('\n\nEnd Program: ')
+
+
+# wn.mainloop()
